@@ -19,16 +19,9 @@ Console Terminal(Serial_Terminal);
 PostMan Postman(Serial3);
 FOTA Firmware(Serial3);
 
-
-
-
-
-
 // Declare Global Variable
 uint32_t Timer_Counter = 0;
 bool Timer_Display = false;
-bool Firmware_Download = false;
-uint16_t _Firmware_ID = 0;
 
 // Timer Functions
 void Timer_Count(void) {
@@ -91,9 +84,22 @@ void CallBack_PackData(uint8_t _PackType) {
 	Postman.Environment(22.22, 33.33);
 	Postman.Battery(1, 2, 3, 3, 11, 1200, 1000);
 
-	// Set Payload Data
-	Postman.TimeStamp("2022-03-23 14:18:30");
+	// Declare Time Variables
+	uint8_t _Year, _Month, _Day, _Hour, _Minute, _Second;
 
+	// Get Time
+	Postman.CCLK(_Year, _Month, _Day, _Hour, _Minute, _Second);
+
+	// Declare Timestamp Variable
+	char _Time_Stamp[25];	// dd-mm-yyyy hh.mm.ss	
+
+	// Handle TimeStamp
+	sprintf(_Time_Stamp, "20%02hhu-%02hhu-%02hhu  %02hhu:%02hhu:%02hhu", _Year, _Month, _Day, _Hour, _Minute, _Second);
+
+	// Set Payload Data
+	Postman.TimeStamp(_Time_Stamp);
+
+	// Set Status
 	if (_PackType == 1)	Postman.SetStatus(240, 500);
 
 	// Print Text
@@ -128,31 +134,65 @@ void CallBack_Command(uint16_t _Command, char * _Pack) {
 	// Terminal Beep
 	Terminal.Beep();
 
+	// Display Terminal Message
 	Terminal.Text(GSM_PostOfficeStatus_X, GSM_PostOfficeStatus_X, YELLOW, String(_Command));
 	Terminal.Text(GSM_PostOfficeStatus_X, GSM_PostOfficeStatus_X, GREEN, "                         ");
 
-	if (_Command == 999) {
+	// Declare Response Code
+	uint16_t _Response_Code = 0;
 
-		// Declare JSON Object
-		StaticJsonDocument<64> Incoming_JSON;
+	// Select Command
+	switch (_Command) {
 
-		// Deserialize the JSON document
-		DeserializationError Error = deserializeJson(Incoming_JSON, _Pack);
+		// Update Command
+		case 262: {
 
-		// Handle JSON
-		if (!Error) _Firmware_ID = Incoming_JSON["Request"]["Firmware"];
+			// Set Response Code
+			_Response_Code = 200;
 
-		// Set Interrupt
-		Firmware_Download = true;
+			// Set Command Interrupt
+			Postman.Interrupt.Send = true;
+
+			// End Case
+			break;
+
+		}
+
+		// Firmware Download Command
+		case 900: {
+
+			// Declare JSON Object
+			StaticJsonDocument<64> Incoming_JSON;
+
+			// Deserialize the JSON document
+			deserializeJson(Incoming_JSON, _Pack);
+
+			// Handle JSON
+			Firmware.Variables.File_ID = Incoming_JSON["Request"]["Firmware"];
+
+			// Set Response Code
+			_Response_Code = 200;
+
+			// Set Command Interrupt
+			Postman.Interrupt.Download = true;
+
+			// End Case
+			break;
+
+		}
+
+		// Unknown Command
+		default: {
+
+			// Set Response Code
+			_Response_Code = 201;
+
+			// End Case
+			break;
+
+		}
 
 	}
-
-	if (_Command == 262) Postman.Interrupt.Send = true;
-
-
-
-
-
 
 	// Declare Response JSON Variable
 	String _Response_JSON;
@@ -161,7 +201,7 @@ void CallBack_Command(uint16_t _Command, char * _Pack) {
 	StaticJsonDocument<32> Response_JSON;
 
 	// Declare JSON Data
-	Response_JSON[F("Response")] = 200;
+	Response_JSON[F("Response")] = _Response_Code;
 
 	// Clear Unused Data
 	Response_JSON.garbageCollect();
@@ -169,17 +209,22 @@ void CallBack_Command(uint16_t _Command, char * _Pack) {
 	// Serialize JSON	
 	uint8_t _JSON_Length = serializeJson(Response_JSON, _Response_JSON) + 1;
 
-	// String to Char Convert
+	// Declare Response Array
 	char JSON[_JSON_Length];
+
+	// Convert Response
 	_Response_JSON.toCharArray(JSON, _JSON_Length);
 
 	// Send Response
 	Postman.Response(200, JSON);
 
+	// Clear Response Code
+	_Response_Code = 0;
+
 	// Print JSON
 	Terminal.Text(26, 4, CYAN, String(_Response_JSON));
 	delay(1000);
-	Terminal.Text(26, 4, CYAN, "                                                  ");
+	Terminal.Text(26, 4, CYAN, F("                                                  "));
 
 }
 
@@ -416,22 +461,39 @@ void setup() {
 void loop() {
 
 	// Firmware Download
-	if (Firmware_Download) {
+	if (Postman.Interrupt.Download) {
 
+		// Terminal Beep
 		Terminal.Beep();
 
-			Postman.Interrupt.Send = false;
+		// Download Firmware
+		bool _Download = Firmware.Download(Firmware.Variables.File_ID);
 
-			bool _Download = Firmware.Download(_Firmware_ID);
+		// Set Download Status
+		Postman.SetStatus(999, 500);
 
-			// Send Download Status
-			Postman.SetStatus(999, 500);
-			Postman.FOTA(_Firmware_ID, _Download, Firmware.Variables.File_Size, Firmware.Variables.SD_File_Size, Firmware.Variables.Download_Time);
-			Postman.Publish(99);
+		// Set Download Parameters
+		Postman.FOTA(Firmware.Variables.File_ID, _Download, Firmware.Variables.File_Size, Firmware.Variables.SD_File_Size, Firmware.Variables.Download_Time);
 
+		// Reset File ID Variable
+		Firmware.Variables.File_ID = 0;
 
-			Firmware_Download = false;
-			_Firmware_ID = 0;
+		// Publish Download Status
+		Postman.Publish(99);
+
+		// Clear Interrupt
+		Postman.Interrupt.Download = false;
+
+	}
+
+	// Send Data Pack
+	if (Postman.Interrupt.Send) {
+
+		// Publish Interrupt Status
+		Postman.Publish(1);
+
+		// Clear Interrupt
+		Postman.Interrupt.Send = false;
 
 	}
 
@@ -445,9 +507,6 @@ void loop() {
 		Timer_Display = false;
 
 	}
-
-	// Send Data Pack
-	if (Postman.Interrupt.Send) Postman.Publish(1);
 
 	// Incoming Pack
 	if (Postman.Interrupt.Ring) Postman.Get();
