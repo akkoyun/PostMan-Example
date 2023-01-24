@@ -1,4 +1,4 @@
-#define __Firmware__ "00.00.01"
+#define __Firmware__ "00.00.02"
 
 // Define Libraries
 #include <Arduino.h>
@@ -371,6 +371,9 @@ void setup() {
 	// Print Version
 	Terminal.Text(2, 111, CYAN, String(__Firmware__));
 
+	// Print Version
+//	Terminal.Text(2, 85, CYAN, String(SERIAL_RX_BUFFER_SIZE));
+//	Terminal.Text(2, 30, CYAN, String(___Firmware___));
 
 
 
