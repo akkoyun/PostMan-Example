@@ -17,10 +17,6 @@ Console Terminal(Serial_Terminal);
 PostMan Postman(Serial3);
 FOTA Firmware(Serial3);
 
-// Define Payload Structures
-Struct_Time Payload_Time;
-Struct_Device Device;
-
 // Declare Global Variable
 uint32_t Timer_Counter = 0;
 bool Timer_Display = false;
@@ -82,25 +78,6 @@ void CallBack_PackData(uint8_t _PackType) {
 
 	// Print Text
 	Terminal.Text(GSM_PostOfficeStatus_X, GSM_PostOfficeStatus_Y, YELLOW, "Device Data Updated");
-
-	// Set Payload Data
-	Device.Temperature = 30.12;
-	Device.Humidity = 78.67;
-	Device.IV = 4.2;
-	Device.AC = -20.12;
-	Device.SOC = 89.90;
-	Device.Charge = 1;
-	Device.Temperature = 28.90;
-	Device.Instant_Cap = 1903;
-
-	// Set Device Data
-	Postman.Device(&Device);
-
-	// Get Time
-	Postman.CCLK(Payload_Time.Year, Payload_Time.Month, Payload_Time.Day, Payload_Time.Hour, Payload_Time.Minute, Payload_Time.Second);
-
-	// Set Payload Data
-	Postman.TimeStamp(&Payload_Time);
 
 	// Set Status
 	if (_PackType == 1)	Postman.SetStatus(240, 500);
@@ -271,6 +248,18 @@ inline void Set_Pinout(void) {
 	*/
 	DDRA = 0b11111111; PORTA = 0b00000000;
 
+	bitSet(DDRA, PA0); bitClear(PORTA, PA0);
+	bitSet(DDRA, PA1); bitClear(PORTA, PA1);
+	bitSet(DDRA, PA2); bitClear(PORTA, PA2);
+	bitSet(DDRA, PA3); bitClear(PORTA, PA3);
+	bitSet(DDRA, PA4); bitClear(PORTA, PA4);
+	bitSet(DDRA, PA5); bitClear(PORTA, PA5);
+	bitSet(DDRA, PA6); bitClear(PORTA, PA6);
+	bitSet(DDRA, PA7); bitClear(PORTA, PA7);
+
+
+
+
 	/*  PORT B
 		PB0 - SS
 		PB1 - SCK
@@ -436,7 +425,6 @@ void setup() {
 
 
 
-
 	// Start Console
 	Terminal.Begin();
 	Terminal.Telit_xE910();
@@ -467,11 +455,11 @@ void setup() {
 	Postman.Listen();
 
 
-	// Set Payload Data
-	Device.Device_ID = "70A11D1D01000099";
+
+
 
 	// Publish Interrupt Status
-	Postman.Publish(1);
+	Postman.Publish(Online);
 
 
 
@@ -510,7 +498,7 @@ void loop() {
 		Firmware.Variables.File_ID = 0;
 
 		// Publish Download Status
-		Postman.Publish(99);
+		Postman.Publish(FOTA_Info);
 
 		// Clear Interrupt
 		Postman.Interrupt.Download = false;
@@ -521,7 +509,7 @@ void loop() {
 	if (Postman.Interrupt.Send) {
 
 		// Publish Interrupt Status
-		Postman.Publish(2);
+		Postman.Publish(Timed);
 
 		// Clear Interrupt
 		Postman.Interrupt.Send = false;
@@ -533,9 +521,6 @@ void loop() {
 
 		// Update Timer
 		Terminal.Text(2, 13, BLUE, String(Timer_Counter));
-
-		Device.Full_Cap = Timer_Counter;
-
 
 		// Release Interrupt
 		Timer_Display = false;
