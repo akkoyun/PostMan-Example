@@ -1,5 +1,3 @@
-#define __Firmware__ "00.00.02"
-
 // Define Libraries
 #include <Arduino.h>
 #include "Terminal_Variables.h"
@@ -19,9 +17,14 @@ Console Terminal(Serial_Terminal);
 PostMan Postman(Serial3);
 FOTA Firmware(Serial3);
 
+// Define Payload Structures
+Struct_Time Payload_Time;
+Struct_Device Device;
+
 // Declare Global Variable
 uint32_t Timer_Counter = 0;
 bool Timer_Display = false;
+bool Connection_Control = false;
 
 // Timer Functions
 void Timer_Count(void) {
@@ -80,27 +83,28 @@ void CallBack_PackData(uint8_t _PackType) {
 	// Print Text
 	Terminal.Text(GSM_PostOfficeStatus_X, GSM_PostOfficeStatus_Y, YELLOW, "Device Data Updated");
 
-	// Set Device Data
-	Postman.Environment(22.22, 33.33);
-	Postman.Battery(1, 2, 3, 3, 11, 1200, 1000);
+	// Set Payload Data
+	Device.Temperature = 30.12;
+	Device.Humidity = 78.67;
+	Device.IV = 4.2;
+	Device.AC = -20.12;
+	Device.SOC = 89.90;
+	Device.Charge = 1;
+	Device.Temperature = 28.90;
+	Device.Instant_Cap = 1903;
 
-	// Declare Time Variables
-	uint8_t _Year, _Month, _Day, _Hour, _Minute, _Second;
+	// Set Device Data
+	Postman.Device(&Device);
 
 	// Get Time
-	Postman.CCLK(_Year, _Month, _Day, _Hour, _Minute, _Second);
-
-	// Declare Timestamp Variable
-	char _Time_Stamp[25];	// dd-mm-yyyy hh.mm.ss	
-
-	// Handle TimeStamp
-	sprintf(_Time_Stamp, "20%02hhu-%02hhu-%02hhu  %02hhu:%02hhu:%02hhu", _Year, _Month, _Day, _Hour, _Minute, _Second);
+	Postman.CCLK(Payload_Time.Year, Payload_Time.Month, Payload_Time.Day, Payload_Time.Hour, Payload_Time.Minute, Payload_Time.Second);
 
 	// Set Payload Data
-	Postman.TimeStamp(_Time_Stamp);
+	Postman.TimeStamp(&Payload_Time);
 
 	// Set Status
 	if (_PackType == 1)	Postman.SetStatus(240, 500);
+	if (_PackType == 2)	Postman.SetStatus(240, 500);
 
 	// Print Text
 	Terminal.Text(GSM_PostOfficeStatus_X, GSM_PostOfficeStatus_X, YELLOW, "                      ");
@@ -126,6 +130,8 @@ void CallBack_Send_Response(uint16_t _Response, uint8_t _Error) {
 		if (_Error == 3) Terminal.Text(GSM_PostOfficeStatus_X, GSM_PostOfficeStatus_Y, RED, "Dial1 Fail");
 		Terminal.Text(GSM_PostOfficeStatus_X, GSM_PostOfficeStatus_X, YELLOW, "                      ");
 
+		if (_Error != 1) Postman.LOG();
+
 	}
 
 }
@@ -133,6 +139,9 @@ void CallBack_Command(uint16_t _Command, char * _Pack) {
 
 	// Terminal Beep
 	Terminal.Beep();
+
+	// Define FOTA Burn Variable
+	bool _Burn = false;
 
 	// Display Terminal Message
 	Terminal.Text(GSM_PostOfficeStatus_X, GSM_PostOfficeStatus_X, YELLOW, String(_Command));
@@ -181,6 +190,17 @@ void CallBack_Command(uint16_t _Command, char * _Pack) {
 
 		}
 
+		// Burn Firmware
+		case 901: {
+
+			// Set Burn Enable
+			_Burn = true;
+
+			// End Case
+			break;
+
+		}
+
 		// Unknown Command
 		default: {
 
@@ -220,6 +240,14 @@ void CallBack_Command(uint16_t _Command, char * _Pack) {
 
 	// Clear Response Code
 	_Response_Code = 0;
+
+	// Burn Enable
+	if (_Burn) {
+
+		// Enable FOTA
+		PORTG |= 0b000000001;
+
+	}
 
 	// Print JSON
 	Terminal.Text(26, 4, CYAN, String(_Response_JSON));
@@ -416,10 +444,6 @@ void setup() {
 	// Print Version
 	Terminal.Text(2, 111, CYAN, String(__Firmware__));
 
-	// Print Version
-//	Terminal.Text(2, 85, CYAN, String(SERIAL_RX_BUFFER_SIZE));
-//	Terminal.Text(2, 30, CYAN, String(___Firmware___));
-
 
 
 
@@ -440,7 +464,14 @@ void setup() {
 	Postman.Connect();
 
 	// Set Postman
-	Postman.Subscribe("70A11D1D01000099");
+	Postman.Listen();
+
+
+	// Set Payload Data
+	Device.Device_ID = "70A11D1D01000099";
+
+	// Publish Interrupt Status
+	Postman.Publish(1);
 
 
 
@@ -490,7 +521,7 @@ void loop() {
 	if (Postman.Interrupt.Send) {
 
 		// Publish Interrupt Status
-		Postman.Publish(1);
+		Postman.Publish(2);
 
 		// Clear Interrupt
 		Postman.Interrupt.Send = false;
@@ -502,6 +533,9 @@ void loop() {
 
 		// Update Timer
 		Terminal.Text(2, 13, BLUE, String(Timer_Counter));
+
+		Device.Full_Cap = Timer_Counter;
+
 
 		// Release Interrupt
 		Timer_Display = false;
