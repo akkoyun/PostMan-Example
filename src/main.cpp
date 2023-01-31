@@ -17,10 +17,16 @@ Console Terminal(Serial_Terminal);
 PostMan Postman(Serial3);
 FOTA Firmware(Serial3);
 
+
+
 // Declare Global Variable
 uint32_t Timer_Counter = 0;
+uint32_t Send_Interval = 120;
 bool Timer_Display = false;
 bool Connection_Control = false;
+
+
+
 
 // Timer Functions
 void Timer_Count(void) {
@@ -73,18 +79,15 @@ void AVR_Timer_1sn(void) {
 
 }
 
+
+
+
 // PostOffice Call Back Functions
 void CallBack_PackData(uint8_t _PackType) { 
-
-	// Print Text
-	Terminal.Text(GSM_PostOfficeStatus_X, GSM_PostOfficeStatus_Y, YELLOW, "Device Data Updated");
 
 	// Set Status
 	if (_PackType == 1)	Postman.SetStatus(240, 500);
 	if (_PackType == 2)	Postman.SetStatus(240, 500);
-
-	// Print Text
-	Terminal.Text(GSM_PostOfficeStatus_X, GSM_PostOfficeStatus_X, YELLOW, "                      ");
 
 }
 void CallBack_Send_Response(uint16_t _Response, uint8_t _Error) {
@@ -117,9 +120,6 @@ void CallBack_Command(uint16_t _Command, char * _Pack) {
 	// Terminal Beep
 	Terminal.Beep();
 
-	// Define FOTA Burn Variable
-	bool _Burn = false;
-
 	// Display Terminal Message
 	Terminal.Text(GSM_PostOfficeStatus_X, GSM_PostOfficeStatus_X, YELLOW, String(_Command));
 	Terminal.Text(GSM_PostOfficeStatus_X, GSM_PostOfficeStatus_X, GREEN, "                         ");
@@ -129,54 +129,6 @@ void CallBack_Command(uint16_t _Command, char * _Pack) {
 
 	// Select Command
 	switch (_Command) {
-
-		// Update Command
-		case 262: {
-
-			// Set Response Code
-			_Response_Code = 200;
-
-			// Set Command Interrupt
-			Postman.Interrupt.Send = true;
-
-			// End Case
-			break;
-
-		}
-
-		// Firmware Download Command
-		case 900: {
-
-			// Declare JSON Object
-			StaticJsonDocument<64> Incoming_JSON;
-
-			// Deserialize the JSON document
-			deserializeJson(Incoming_JSON, _Pack);
-
-			// Handle JSON
-			Firmware.Variables.File_ID = Incoming_JSON["Request"]["Firmware"];
-
-			// Set Response Code
-			_Response_Code = 200;
-
-			// Set Command Interrupt
-			Postman.Interrupt.Download = true;
-
-			// End Case
-			break;
-
-		}
-
-		// Burn Firmware
-		case 901: {
-
-			// Set Burn Enable
-			_Burn = true;
-
-			// End Case
-			break;
-
-		}
 
 		// Unknown Command
 		default: {
@@ -218,20 +170,60 @@ void CallBack_Command(uint16_t _Command, char * _Pack) {
 	// Clear Response Code
 	_Response_Code = 0;
 
-	// Burn Enable
-	if (_Burn) {
-
-		// Enable FOTA
-		PORTG |= 0b000000001;
-
-	}
-
 	// Print JSON
 	Terminal.Text(26, 4, CYAN, String(_Response_JSON));
 	delay(1000);
 	Terminal.Text(26, 4, CYAN, F("                                                  "));
 
 }
+
+// PostOffice Interrupt Routine
+void Interrupt_Routine(void) {
+
+	// Incoming Pack
+	if (Postman.Interrupt.Ring) Postman.Get();
+
+	// Send Pack Routine
+	if (Postman.Interrupt.Online) Postman.Publish(Online);
+	if (Postman.Interrupt.Update) Postman.Publish(Update);
+	if (Postman.Interrupt.Timed) Postman.Publish(Timed);
+	if (Postman.Interrupt.Interrupt) Postman.Publish(Interrupt);
+	if (Postman.Interrupt.Alarm) Postman.Publish(Alarm);
+	if (Postman.Interrupt.Offline) Postman.Publish(Offline);
+	if (Postman.Interrupt.FOTA_Info) Postman.Publish(FOTA_Info);
+
+	// FOTA Routine
+	if (Postman.Interrupt.FOTA_Download) {
+
+		// Terminal Beep
+		Terminal.Beep();
+
+		// Download Firmware
+		bool _Download = Firmware.Download(Postman.FOTA_ID());
+
+		// Set Download Parameters
+		Postman.FOTA(Postman.FOTA_ID(), _Download, Firmware.Variables.File_Size, Firmware.Variables.SD_File_Size, Firmware.Variables.Download_Time);
+
+		// Publish Download Status
+		Postman.Interrupt.FOTA_Download = false;
+		Postman.Interrupt.Timed = false;
+		Postman.Interrupt.FOTA_Info = true;
+
+	}
+	if (Postman.Interrupt.FOTA_Burn) {
+
+		// Terminal Beep
+		Terminal.Beep();
+
+		// Turn FOTA Power Off
+		PORTG |= 0b00000001;
+
+	}
+
+}
+
+
+
 
 // Hardware Functions
 inline void Set_Pinout(void) {
@@ -383,7 +375,7 @@ ISR(TIMER5_COMPA_vect) {
 	if (Timer_Control(1)) Timer_Display = true;
 
 	// Data Send Timer Interrupt
-	if (Timer_Control(120)) Postman.Interrupt.Send = true;
+	if (Timer_Control(Send_Interval)) Postman.Interrupt.Timed = true;
 
 }
 
@@ -422,9 +414,6 @@ void setup() {
 	// Start GSM Serial
 	Serial3.begin(115200);
 
-
-
-
 	// Start Console
 	Terminal.Begin();
 	Terminal.Telit_xE910();
@@ -436,14 +425,25 @@ void setup() {
 
 
 
+	// Read Registers
+	uint16_t _Reg1 = Postman.Get_EEPROM(0x00); Terminal.Text(2, 25, YELLOW, String(_Reg1));
+	uint16_t _Reg2 = Postman.Get_EEPROM(0x02); Terminal.Text(2, 30, YELLOW, String(_Reg2));
+	uint16_t _Reg3 = Postman.Get_EEPROM(0x04); Terminal.Text(2, 35, YELLOW, String(_Reg3));
+	Send_Interval = _Reg2;
 
-	// Power OFF GSM Modem
-	Postman.Power(false);
+
+
+
+
+
 
 	// Set CallBacks
 	Postman.Event_PackData(CallBack_PackData);
 	Postman.Event_PackSend_Response(CallBack_Send_Response);
 	Postman.Event_Request(CallBack_Command);
+
+	// Power OFF GSM Modem
+	Postman.Power(false);
 
 	// Initialize Modem
 	Postman.Initialize();
@@ -454,12 +454,6 @@ void setup() {
 	// Set Postman
 	Postman.Listen();
 
-
-
-
-
-	// Publish Interrupt Status
-	Postman.Publish(Online);
 
 
 
@@ -479,42 +473,10 @@ void setup() {
 
 void loop() {
 
-	// Firmware Download
-	if (Postman.Interrupt.Download) {
+	// Interrupt Routine
+	Interrupt_Routine();
 
-		// Terminal Beep
-		Terminal.Beep();
 
-		// Download Firmware
-		bool _Download = Firmware.Download(Firmware.Variables.File_ID);
-
-		// Set Download Status
-		Postman.SetStatus(999, 500);
-
-		// Set Download Parameters
-		Postman.FOTA(Firmware.Variables.File_ID, _Download, Firmware.Variables.File_Size, Firmware.Variables.SD_File_Size, Firmware.Variables.Download_Time);
-
-		// Reset File ID Variable
-		Firmware.Variables.File_ID = 0;
-
-		// Publish Download Status
-		Postman.Publish(FOTA_Info);
-
-		// Clear Interrupt
-		Postman.Interrupt.Download = false;
-
-	}
-
-	// Send Data Pack
-	if (Postman.Interrupt.Send) {
-
-		// Publish Interrupt Status
-		Postman.Publish(Timed);
-
-		// Clear Interrupt
-		Postman.Interrupt.Send = false;
-
-	}
 
 	// Update Timer
 	if (Timer_Display) {
@@ -527,7 +489,5 @@ void loop() {
 
 	}
 
-	// Incoming Pack
-	if (Postman.Interrupt.Ring) Postman.Get();
 
 }
