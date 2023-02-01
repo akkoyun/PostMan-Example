@@ -1,5 +1,8 @@
 {
     "cSpell.words": [
         "Pinout"
-    ]
+    ],
+    "files.associations": {
+        "new": "cpp"
+    }
 }
