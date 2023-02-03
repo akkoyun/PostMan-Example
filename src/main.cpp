@@ -22,26 +22,9 @@ void CallBack_PackData(uint8_t);
 void CallBack_Send_Response(uint16_t, uint8_t);
 void CallBack_Command(uint16_t, char*);
 
-
-
-
-
-
-
-
-
-
-
-
 // Declare Global Variable
-uint32_t Send_Interval = 120;
+bool Timer_Measure_Pressure = false;
 bool Timer_Display = false;
-
-
-
-
-
-
 
 // PostOffice Call Back Functions
 void CallBack_PackData(uint8_t _PackType) { 
@@ -57,7 +40,7 @@ void CallBack_Send_Response(uint16_t _Response, uint8_t _Error) {
 	if (_Error == 0) {
 
 		// Buzzer Beep
-		B100_BC.Buzzer(S_MODE1);
+		B100_BC.Buzzer(S_MODE2);
 
 		// Control for Command
 		if (_Response == 200) Terminal.Text(GSM_PostOfficeStatus_X, GSM_PostOfficeStatus_Y, GREEN, "Pack Sended");
@@ -77,6 +60,9 @@ void CallBack_Send_Response(uint16_t _Response, uint8_t _Error) {
 		if (_Error != 1) Postman.LOG();
 
 	}
+
+	// Set RTC Timer
+	B100_BC.Set_Timer(B100_BC.Variables.Interval.Online);
 
 }
 void CallBack_Command(uint16_t _Command, char * _Pack) {
@@ -139,6 +125,9 @@ void CallBack_Command(uint16_t _Command, char * _Pack) {
 	delay(1000);
 	Terminal.Text(26, 4, CYAN, F("                                                  "));
 
+	// Set RTC Timer
+	B100_BC.Set_Timer(B100_BC.Variables.Interval.Online);
+
 }
 
 // PostOffice Interrupt Routine
@@ -186,73 +175,14 @@ void Interrupt_Routine(void) {
 
 }
 
-
-
-
-// Timer Interrupt
-ISR(TIMER5_COMPA_vect) {
-
-	// Set Timer Counter
-	B100_BC.Timer_Count();
-
-	// Activate Timer Interrupt
-	if (B100_BC.Timer_Control(1)) Timer_Display = true;
-
-	// Data Send Timer Interrupt
-	if (B100_BC.Timer_Control(Send_Interval)) Postman.Interrupt.Timed = true;
-
-}
-
-// GSM Ring Interrupt
-ISR(PCINT1_vect) {
-
-	// Control Ring Interrupt [PJ2]
-	if ((PINJ & (1 << PINJ2)) == (1 << PINJ2)) {
-		
-		// Set Interrupt Variable
-		Postman.Interrupt.Ring = true;
-
-		// Interrupt Delay
-		delay(75);
-
-	} else {
-		
-		// Set Interrupt Variable
-		Postman.Interrupt.Ring = false;
-
-	}
-
-}
-
 void setup() {
 
 	// Define Hardware
 	B100_BC.Begin();
 
-	// Start Terminal
-	Serial.begin(115200);
-
-	// Start GSM Serial
-	Serial3.begin(115200);
-
 	// Start Console
-	Terminal.Begin();
-	Terminal.Telit_xE910();
-
-
-
-
-	// Read Registers
-	uint16_t _Reg1 = Postman.Get_EEPROM(EEPROM_Online_Interval); Terminal.Text(2, 25, YELLOW, String(_Reg1));
-	uint16_t _Reg2 = Postman.Get_EEPROM(EEPROM_Offline_Interval); Terminal.Text(2, 30, YELLOW, String(_Reg2));
-	uint16_t _Reg3 = Postman.Get_EEPROM(EEPROM_Current_Ratio); Terminal.Text(2, 35, YELLOW, String(_Reg3));
-
-
-
-
-
-
-
+//	Terminal.Begin();
+//	Terminal.Telit_xE910();
 
 	// Set CallBacks
 	Postman.Event_PackData(CallBack_PackData);
@@ -278,8 +208,8 @@ void setup() {
 
 
 	// Print Version
-	Terminal.Text(2, 111, CYAN, String(__Firmware__));
-	Terminal.Text(31, 80, CYAN, String(Postman.JSON_Data.Device_ID));
+	Terminal.Text(6, 49, CYAN, String(__Firmware__));
+	Terminal.Text(5, 61, CYAN, String(Postman.JSON_Data.Device_ID));
 
 
 
@@ -293,8 +223,6 @@ void loop() {
 	// Interrupt Routine
 	Interrupt_Routine();
 
-
-
 	// Update Timer
 	if (Timer_Display) {
 
@@ -306,5 +234,73 @@ void loop() {
 
 	}
 
+	// Pressure Measurement
+	if (Timer_Measure_Pressure) {
+
+		// Blink
+		B100_BC.LED(__BLUE__, 1, 200);
+
+		// Measure Pressure
+		B100_BC.Measure_Pressure();
+
+		// Print Version
+		Terminal.Text(25, 108, CYAN, String(B100_BC.Variables.Pressure.Value));
+		Terminal.Text(28, 108, CYAN, String(B100_BC.Variables.Pressure.Average));
+		Terminal.Text(26, 108, CYAN, String(B100_BC.Variables.Pressure.Min));
+		Terminal.Text(27, 108, CYAN, String(B100_BC.Variables.Pressure.Max));
+		Terminal.Text(31, 114, CYAN, String(B100_BC.Variables.Pressure.Data_Count));
+		Terminal.Text(25, 108, CYAN, String(B100_BC.Variables.Pressure.Median, 3));
+		Terminal.Text(29, 108, BLUE, String(B100_BC.Variables.Pressure.Deviation, 3));
+
+		// Release Interrupt
+		Timer_Measure_Pressure = false;
+
+	}
+
+}
+
+// Timer Interrupt
+ISR(TIMER5_COMPA_vect) {
+
+	// Set Timer Counter
+	B100_BC.Timer_Count();
+
+	// Activate Timer Interrupt
+	if (B100_BC.Timer_Control(1)) Timer_Display = true;
+
+	// Measure Pressure
+	if (B100_BC.Timer_Control(3)) Timer_Measure_Pressure = true;
+
+}
+
+// GSM Ring Interrupt
+ISR(PCINT1_vect) {
+
+	// Control Ring Interrupt [PJ2]
+	if ((PINJ & (1 << PINJ2)) == (1 << PINJ2)) {
+		
+		// Set Interrupt Variable
+		Postman.Interrupt.Ring = true;
+
+		// Interrupt Delay
+		delay(75);
+
+	} else {
+		
+		// Set Interrupt Variable
+		Postman.Interrupt.Ring = false;
+
+	}
+
+}
+
+// RTC Timer Interrupt
+ISR(PCINT0_vect) {
+
+	// Control RTC Interrupt [PB4]
+	if ((PINB & (1 << PINB4)) == (1 << PINB4)) Postman.Interrupt.Timed = true;
+
+	// Interrupt Delay
+	delay(50);
 
 }
