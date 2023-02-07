@@ -5,7 +5,7 @@
 #include "Terminal_Variables.h"
 #include <PostMan.h>
 #include <ArduinoJson.h>
-#include <Console.h>
+//#include <Console.h>
 
 // Define Hardware
 B100BC B100_BC;
@@ -43,9 +43,23 @@ void CallBack_Send_Response(uint16_t _Response, uint8_t _Error) {
 		B100_BC.Buzzer(S_MODE2);
 
 		// Control for Command
-		if (_Response == 200) Terminal.Text(GSM_PostOfficeStatus_X, GSM_PostOfficeStatus_Y, GREEN, "Pack Sended");
-		if (_Response != 200) Terminal.Text(GSM_PostOfficeStatus_X, GSM_PostOfficeStatus_Y, RED, "Pack Send Failed");
-		Terminal.Text(GSM_PostOfficeStatus_X, GSM_PostOfficeStatus_X, YELLOW, "                      ");
+		if (_Response == 200) {
+
+			// Print Command State
+			B100_BC.Terminal_Text(14, 44, Terminal_CYAN, F("                                    "));
+			B100_BC.Terminal_Text(14, 44, Terminal_CYAN, F("Pack Sended"));
+
+		}
+		if (_Response != 200) {
+
+			// Print Command State
+			B100_BC.Terminal_Text(14, 44, Terminal_CYAN, F("                                    "));
+			B100_BC.Terminal_Text(14, 44, Terminal_CYAN, F("Pack Send Failed"));
+
+		}
+
+		// Print Command State
+		B100_BC.Terminal_Text(14, 44, Terminal_CYAN, F("                                    "));
 
 	} else {
 
@@ -70,9 +84,9 @@ void CallBack_Command(uint16_t _Command, char * _Pack) {
 	// Terminal Beep
 	Terminal.Beep();
 
-	// Display Terminal Message
-	Terminal.Text(GSM_PostOfficeStatus_X, GSM_PostOfficeStatus_X, YELLOW, String(_Command));
-	Terminal.Text(GSM_PostOfficeStatus_X, GSM_PostOfficeStatus_X, GREEN, "                         ");
+	// Print Command State
+	B100_BC.Terminal_Text(14, 44, Terminal_CYAN, F("                                    "));
+	B100_BC.Terminal_Text(14, 44, Terminal_CYAN, String(_Command));
 
 	// Declare Response Code
 	uint16_t _Response_Code = 0;
@@ -120,10 +134,9 @@ void CallBack_Command(uint16_t _Command, char * _Pack) {
 	// Clear Response Code
 	_Response_Code = 0;
 
-	// Print JSON
-	Terminal.Text(26, 4, CYAN, String(_Response_JSON));
-	delay(1000);
-	Terminal.Text(26, 4, CYAN, F("                                                  "));
+	// Print Command State
+	B100_BC.Terminal_Text(14, 44, Terminal_CYAN, F("                                    "));
+	B100_BC.Terminal_Text(14, 44, Terminal_CYAN, String(_Response_JSON));
 
 	// Set RTC Timer
 	B100_BC.Set_Timer(B100_BC.Variables.Interval.Online);
@@ -180,6 +193,10 @@ void setup() {
 	// Define Hardware
 	B100_BC.Begin();
 
+	// Print Version
+	B100_BC.Terminal_Text(6, 71, Terminal_CYAN, String(__Firmware__));
+	B100_BC.Terminal_Text(7, 71, Terminal_CYAN, String(__Hardware__));
+
 	// Start Console
 //	Terminal.Begin();
 //	Terminal.Telit_xE910();
@@ -207,9 +224,7 @@ void setup() {
 
 
 
-	// Print Version
-	Terminal.Text(6, 49, CYAN, String(__Firmware__));
-	Terminal.Text(5, 61, CYAN, String(Postman.JSON_Data.Device_ID));
+
 
 
 
@@ -244,13 +259,12 @@ void loop() {
 		B100_BC.Measure_Pressure();
 
 		// Print Version
-		Terminal.Text(25, 108, CYAN, String(B100_BC.Variables.Pressure.Value));
-		Terminal.Text(28, 108, CYAN, String(B100_BC.Variables.Pressure.Average));
-		Terminal.Text(26, 108, CYAN, String(B100_BC.Variables.Pressure.Min));
-		Terminal.Text(27, 108, CYAN, String(B100_BC.Variables.Pressure.Max));
-		Terminal.Text(31, 114, CYAN, String(B100_BC.Variables.Pressure.Data_Count));
-		Terminal.Text(25, 108, CYAN, String(B100_BC.Variables.Pressure.Median, 3));
-		Terminal.Text(29, 108, BLUE, String(B100_BC.Variables.Pressure.Deviation, 3));
+		Terminal.Text(25, 110, CYAN, String(B100_BC.Variables.Pressure.Value, 3));
+		Terminal.Text(26, 110, CYAN, String(B100_BC.Variables.Pressure.Min, 3));
+		Terminal.Text(27, 110, CYAN, String(B100_BC.Variables.Pressure.Max, 3));
+		Terminal.Text(28, 110, CYAN, String(B100_BC.Variables.Pressure.Average, 3));
+		Terminal.Text(29, 110, BLUE, String(B100_BC.Variables.Pressure.Deviation, 3));
+		Terminal.Text(31, 116, CYAN, String(B100_BC.Variables.Pressure.Data_Count));
 
 		// Release Interrupt
 		Timer_Measure_Pressure = false;
